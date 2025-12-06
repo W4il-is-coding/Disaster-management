@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disaster Relief - Emergency Locator</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+x`
+    <style>
+        /* CSS Variables for Theme Support */
+        :root {
+            --bg-color: #f4f4f4;
+            --header-bg: #004d99;
+            --header-text: white;
+            --text-color: #333;
+            --warning-bg: #ffe0b2;
+            --warning-text: #e65100;
+            --map-border: #ddd;
+            --loader-border: #f3f3f3;
+            --loader-top: #3498db;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --header-bg: #002244;
+            --header-text: #e0e0e0;
+            --text-color: #e0e0e0;
+            --warning-bg: #4a2c1a;
+            --warning-text: #ff9800;
+            --map-border: #444;
+            --loader-border: #333;
+            --loader-top: #64b5f6;
+        }
+
+        /* Basic Styling for the page */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            text-align: center;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        header {
+            background-color: var(--header-bg);
+            color: var(--header-text);
+            padding: 20px 0;
+            margin-bottom: 20px;
+            position: relative;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .theme-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: var(--header-text);
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+        .theme-toggle:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        [data-theme="dark"] .theme-toggle {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .main-button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            transition: background-color 0.3s;
+            font-weight: bold;
+        }
+        #sos-button {
+            background-color: #ff4444;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+        #sos-button:hover {
+            background-color: #cc0000;
+        }
+        #nearest-camp-button {
+            background-color: #4CAF50;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+        #nearest-camp-button:hover {
+            background-color: #388E3C;
+        }
+        #map {
+            height: 500px; /* Map container size */
+            width: 100%;
+            background-color: #ccc;
+            border-radius: 8px;
+            border: 2px solid var(--map-border);
+            margin-top: 20px;
+            transition: border-color 0.3s;
+        }
+        #message {
+            margin-top: 15px;
+            font-size: 1.1em;
+            color: var(--text-color);
+            transition: color 0.3s;
+        }
+        .warning-box {
+            background-color: var(--warning-bg);
+            color: var(--warning-text);
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        /* Loading Spinner CSS */
+        .loader {
+            border: 4px solid var(--loader-border);
+            border-top: 4px solid var(--loader-top);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            display: none; /* Hidden by default */
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <button class="theme-toggle" id="theme-toggle">🌙 Dark Mode</button>
+        <h1>Disaster Relief Network System</h1>
+        <p>Your connection to help and safety.</p>
+    </header>
+
+    <div class="container">
+        <div class="button-group">
+            <button id="sos-button" class="main-button">
+                🚨 SOS - I NEED HELP!
+            </button>
+            <button id="nearest-camp-button" class="main-button">
+                📍 Find Nearest Camp
+            </button>
+        </div>
+
+        <div class="warning-box">
+            ⚠️ **STAY SAFE!** If facing an immediate threat, find high ground or shelter and call local emergency services first.
+        </div>
+
+        <div class="loader" id="loader"></div>
+        <p id="message">Loading regional camp network...</p>
+        
+        <div id="map"></div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        // Placeholder Camp Locations (Admin Data) - Using coordinates in/around Kottayam, Kerala
+        const RELIEF_CAMPS = [
+            { name: "Kottayam Main Camp", lat: 9.5916, lon: 76.5222 }, // Kottayam City Center
+            { name: "Pala Resource Hub", lat: 9.6974, lon: 76.6811 },
+            { name: "Changanassery Shelter", lat: 9.4589, lon: 76.5358 },
+            { name: "Vaikom Supply Post", lat: 9.7667, lon: 76.3957 }
+        ];
+
+        // Kottayam's approximate center for fallback/demo
+        const REGION_COORDS = { lat: 9.5916, lon: 76.5222, zoom: 10 }; // Zoom out slightly for regional view
+        
+        // --- UTILITY FUNCTIONS ---
+
+        /**
+         * Calculates the road distance between two points using OSRM routing API (in kilometers).
+         * Falls back to Haversine if routing fails.
+         */
+        async function calculateRoadDistance(lat1, lon1, lat2, lon2) {
+            try {
+                // Use OSRM public routing service
+                const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false&alternatives=false`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error('OSRM API request failed');
+                }
+                
+                const data = await response.json();
+                
+                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                    // Distance is in meters, convert to km
+                    return data.routes[0].distance / 1000;
+                } else {
+                    throw new Error('No route found');
+                }
+            } catch (error) {
+                console.warn('Road routing failed, using Euclidean distance:', error);
+                // Fallback to Haversine formula
+            const R = 6371; // Radius of the Earth in km
+            const dLat = (lat2 - lat1) * (Math.PI / 180);
+            const dLon = (lon2 - lon1) * (Math.PI / 180);
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // Distance in km
+            }
+        }
+
+        /**
+         * Gets the route geometry (coordinates) between two points using OSRM.
+         */
+        async function getRouteGeometry(lat1, lon1, lat2, lon2) {
+            try {
+                const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error('OSRM API request failed');
+                }
+                
+                const data = await response.json();
+                
+                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                    // Convert GeoJSON coordinates [lon, lat] to Leaflet format [lat, lon]
+                    return data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+                } else {
+                    throw new Error('No route found');
+                }
+            } catch (error) {
+                console.warn('Route geometry failed, using straight line:', error);
+                // Fallback to straight line
+                return [[lat1, lon1], [lat2, lon2]];
+            }
+        }
+
+        /**
+         * Finds the nearest camp to a given location using road distance.
+         */
+        async function findNearestCamp(userLat, userLon) {
+            let nearestCamp = null;
+            let minDistance = Infinity;
+
+            // Calculate road distances for all camps
+            const distancePromises = RELIEF_CAMPS.map(async (camp) => {
+                const distance = await calculateRoadDistance(userLat, userLon, camp.lat, camp.lon);
+                return { ...camp, distance: distance };
+            });
+
+            const campsWithDistances = await Promise.all(distancePromises);
+
+            // Find the nearest one
+            campsWithDistances.forEach(camp => {
+                if (camp.distance < minDistance) {
+                    minDistance = camp.distance;
+                    nearestCamp = camp;
+                }
+            });
+
+            return nearestCamp;
+        }
+
+        /**
+         * Determines the marker color based on the geographical distance to the camp.
+         * CORRECTED LOGIC: Green < 75km, Yellow 75-150km, Red > 150km.
+         */
+        function getCampColor(distance) {
+            if (distance < 75) {
+                return 'green';
+            } else if (distance >= 75 && distance <= 150) {
+                return 'yellow';
+            } else {
+                return 'red';
+            }
+        }
+
+        // --- MAP FUNCTIONS (Leaflet) ---
+        let map = null;
+
+        // Store route layer for removal
+        let routeLayer = null;
+
+        /**
+         * Initializes and displays the map.
+         */
+        async function initMap(userLat = REGION_COORDS.lat, userLon = REGION_COORDS.lon, nearestCamp = null) {
+            const mapContainer = document.getElementById('map');
+            
+            if (map) {
+                map.remove(); // Remove previous map instance if it exists
+            }
+            
+            // Safety check for Leaflet
+            if (typeof L === 'undefined') {
+                document.getElementById('message').innerHTML = "❌ **ERROR:** Mapping library failed to load. Please ensure your device is connected to the internet.";
+                return;
+            }
+
+            const zoomLevel = nearestCamp ? 12 : REGION_COORDS.zoom;
+            map = L.map(mapContainer).setView([userLat, userLon], zoomLevel); 
+            
+            // Use dark tile layer if dark theme is active
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const tileUrl = isDark 
+                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            
+            L.tileLayer(tileUrl, {
+                attribution: isDark 
+                    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            const bounds = [];
+            
+            // 1. Mark ALL Camp Locations 
+            for (const camp of RELIEF_CAMPS) {
+                let markerColor = 'green';
+                let popupText = `<b>Camp: ${camp.name}</b>`;
+                bounds.push([camp.lat, camp.lon]);
+
+                if (nearestCamp) {
+                    // Calculate road distance for each camp
+                    const distance = await calculateRoadDistance(userLat, userLon, camp.lat, camp.lon);
+                    markerColor = getCampColor(distance);
+                    popupText = `<b>Camp: ${camp.name}</b><br>Road Distance: ${distance.toFixed(2)} km`;
+
+                    // Highlight the nearest camp in gold
+                    if (camp.name === nearestCamp.name) {
+                        markerColor = 'gold';
+                        popupText = `<b>⭐ NEAREST CAMP: ${camp.name}</b><br>Road Distance: ${nearestCamp.distance.toFixed(2)} km`;
+                    }
+                }
+                
+                L.marker([camp.lat, camp.lon], { icon: L.icon({
+                    iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${markerColor}.png`,
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                }) }).addTo(map)
+                    .bindPopup(popupText);
+            }
+            
+            // 2. Mark User Location (Only if requested - nearestCamp exists)
+            if (nearestCamp) {
+                L.marker([userLat, userLon], { icon: L.icon({
+                    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                }) }).addTo(map)
+                    .bindPopup("<b>Your Current Location</b>").openPopup();
+                
+                // 3. Draw road route (not straight line)
+                try {
+                    const routeCoords = await getRouteGeometry(userLat, userLon, nearestCamp.lat, nearestCamp.lon);
+                    
+                    // Remove previous route if exists
+                    if (routeLayer) {
+                        map.removeLayer(routeLayer);
+                    }
+                    
+                    routeLayer = L.polyline(routeCoords, { 
+                        color: '#ff4444', 
+                        weight: 5, 
+                        opacity: 0.8,
+                        smoothFactor: 1
+                    }).addTo(map);
+                    
+                    // Fit map view to route bounds
+                    map.fitBounds(routeLayer.getBounds(), {padding: [50, 50]});
+                } catch (error) {
+                    console.error('Failed to draw route:', error);
+                    // Fallback to straight line
+                L.polyline([
+                    [userLat, userLon],
+                    [nearestCamp.lat, nearestCamp.lon]
+                    ], { color: '#ff4444', weight: 4, opacity: 0.7, dashArray: '10, 10' }).addTo(map);
+                
+                map.fitBounds([
+                    [userLat, userLon],
+                    [nearestCamp.lat, nearestCamp.lon]
+                ], {padding: [50, 50]}); 
+                }
+
+                document.getElementById('message').innerHTML = `
+                    ✅ **SUCCESS!** Your nearest camp is <b>${nearestCamp.name}</b>, which is 
+                    <b>${nearestCamp.distance.toFixed(2)} km</b> away via roads. The route is shown in red.
+                    <br>Camps are color-coded by road distance: 
+                    <span style="color: green; font-weight: bold;">Green (< 75km)</span>, 
+                    <span style="color: orange; font-weight: bold;">Yellow (75-150km)</span>, 
+                    <span style="color: red; font-weight: bold;">Red (> 150km)</span>.
+                `;
+            } else {
+                // Initial load view: Fit map bounds to show all camps
+                map.fitBounds(bounds, {padding: [20, 20]});
+                document.getElementById('message').textContent = "Click 'Find Nearest Camp' to locate yourself and see the nearest center.";
+            }
+        }
+        
+        // Function to load the map immediately on page load
+        function loadInitialMap() {
+            // Use a slight delay to ensure the map div is rendered
+            setTimeout(initMap, 50); 
+        }
+
+        // --- MAIN GEOLOCATION LOGIC (Triggered by Find Nearest Camp button) ---
+
+        async function findCamps() {
+            const messageEl = document.getElementById('message');
+            const loaderEl = document.getElementById('loader');
+
+            messageEl.textContent = "Locating you now...";
+            loaderEl.style.display = 'block';
+
+            // Get user's current position
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        // SUCCESS: Got the real location
+                        const userLat = position.coords.latitude;
+                        const userLon = position.coords.longitude;
+                        
+                        messageEl.textContent = "Calculating road distances to all camps...";
+                        
+                        // Find nearest camp using road distances
+                        const nearestCamp = await findNearestCamp(userLat, userLon);
+                        await initMap(userLat, userLon, nearestCamp); // Pass user data to display nearest info
+                        loaderEl.style.display = 'none';
+                    },
+                    async (error) => {
+                        // ERROR: Geo-location blocked or failed. Use Kottayam fallback.
+                        console.warn(`Geolocation error (${error.code}): ${error.message}`);
+                        
+                        // Fallback: Use a random location near Kottayam (as requested)
+                        const randomOffsetLat = (Math.random() - 0.5) * 0.05; 
+                        const randomOffsetLon = (Math.random() - 0.5) * 0.05;
+                        
+                        const fallbackLat = REGION_COORDS.lat + randomOffsetLat;
+                        const fallbackLon = REGION_COORDS.lon + randomOffsetLon;
+
+                        messageEl.textContent = "Calculating road distances to all camps...";
+                        const nearestCamp = await findNearestCamp(fallbackLat, fallbackLon);
+                        
+                        messageEl.innerHTML = `
+                            ⚠️ **Location Access Denied/Failed.** Showing a random location near Kottayam for demo purposes. 
+                            <br>Your nearest camp is estimated to be <b>${nearestCamp.name}</b> (${nearestCamp.distance.toFixed(2)} km via roads).
+                            <br>Camps are color-coded by road distance: 
+                            <span style="color: green; font-weight: bold;">Green (< 75km)</span>, 
+                            <span style="color: orange; font-weight: bold;">Yellow (75-150km)</span>, 
+                            <span style="color: red; font-weight: bold;">Red (> 150km)</span>.
+                        `;
+
+                        await initMap(fallbackLat, fallbackLon, nearestCamp); // Pass fallback data
+                        loaderEl.style.display = 'none';
+                    }
+                );
+            } else {
+                // Browser does not support Geo-location
+                messageEl.textContent = "Browser does not support Geo-location. Cannot find nearest camp.";
+                loaderEl.style.display = 'none';
+            }
+        }
+        
+        // --- NEW INSTANT SOS LOGIC ---
+        function instantSOS() {
+            const messageEl = document.getElementById('message');
+            const loaderEl = document.getElementById('loader');
+
+            messageEl.textContent = "🚨 Sending immediate SOS with your location...";
+            loaderEl.style.display = 'block';
+
+            // 1. Get User Location (mandatory for SOS)
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const userLat = position.coords.latitude;
+                        const userLon = position.coords.longitude;
+                        
+                        // 2. Simulate sending data to backend (replace with actual API call to your Python server)
+                        console.log("IMMEDIATE SOS DATA SENT:", {
+                            lat: userLat,
+                            lon: userLon,
+                            emergencyType: "URGENT_LOCATION_ONLY"
+                        });
+                        
+                        loaderEl.style.display = 'none';
+                        document.getElementById('message').innerHTML = `
+                            ✅ **IMMEDIATE SOS SENT!** Your precise location (${userLat.toFixed(4)}, ${userLon.toFixed(4)}) has been transmitted to emergency services. 
+                            <br>**Stay in place and conserve phone battery.**
+                        `;
+                    },
+                    (error) => {
+                        // 3. Handle failure
+                        loaderEl.style.display = 'none';
+                        document.getElementById('message').innerHTML = `
+                            ❌ **SOS Failed!** Unable to access your location. Please call 112 or local emergency services directly.
+                            <br>Error: ${error.message}
+                        `;
+                        console.error("SOS GEOLOCATION ERROR:", error);
+                    }
+                );
+            } else {
+                // 4. Handle unsupported browser
+                loaderEl.style.display = 'none';
+                document.getElementById('message').innerHTML = "❌ **SOS Failed!** Browser does not support Geo-location.";
+            }
+        }
+
+        // --- THEME TOGGLE FUNCTIONALITY ---
+        function initTheme() {
+            const themeToggle = document.getElementById('theme-toggle');
+            const currentTheme = localStorage.getItem('theme') || 'light';
+            
+            // Apply saved theme
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            updateThemeButton(currentTheme);
+            
+            // Update map tiles if map exists
+            if (map) {
+                updateMapTiles();
+            }
+            
+            // Toggle theme on button click
+            themeToggle.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeButton(newTheme);
+                
+                // Update map tiles
+                if (map) {
+                    updateMapTiles();
+                }
+            });
+        }
+        
+        function updateThemeButton(theme) {
+            const themeToggle = document.getElementById('theme-toggle');
+            themeToggle.textContent = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+        }
+        
+        function updateMapTiles() {
+            if (!map) return;
+            
+            // Remove existing tile layer
+            map.eachLayer((layer) => {
+                if (layer instanceof L.TileLayer) {
+                    map.removeLayer(layer);
+                }
+            });
+            
+            // Add new tile layer based on theme
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const tileUrl = isDark 
+                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            
+            L.tileLayer(tileUrl, {
+                attribution: isDark 
+                    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+        }
+
+        // --- EVENT LISTENERS ---
+        document.getElementById('nearest-camp-button').addEventListener('click', findCamps);
+        
+        // Assign the new instantSOS function to the SOS button
+        document.getElementById('sos-button').addEventListener('click', instantSOS);
+
+        // --- INITIALIZATION ---
+        window.onload = () => {
+            initTheme();
+            loadInitialMap();
+        };
+
+    </script>
+</body>
+</html>
